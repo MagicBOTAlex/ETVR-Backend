@@ -5,6 +5,8 @@ from .assets import ASSETS_DIR, IMAGES_DIR
 from .etvr import ETVR
 from .logger import setup_logger
 
+from fastapi.middleware.cors import CORSMiddleware
+
 
 def setup_app():
     setup_logger()
@@ -14,6 +16,15 @@ def setup_app():
     app.include_router(etvr_app.router)
     app.mount("/", StaticFiles(directory=ASSETS_DIR, html=True))
     app.mount("/images", StaticFiles(directory=IMAGES_DIR))
+    
+    # Enable CORS for Tauri (localhost:1420)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:1420", "http://127.0.0.1:1420"],  # Allow Tauri frontend
+        allow_credentials=True,  # Allow cookies/authenticated requests
+        allow_methods=["*"],  # Allow all request methods (GET, POST, PUT, DELETE)
+        allow_headers=["*"],  # Allow all headers
+    )
     return app
 
 
