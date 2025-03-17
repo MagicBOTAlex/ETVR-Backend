@@ -1,5 +1,8 @@
 # This file exists purely because circular imports are a thing and im too lazy to come up with a better
 # solution that doesnt involve a bunch of refactoring.
+
+# Alex: Technical debt go brr. I completely understand though.
+
 import logging
 import numpy as np
 from typing import Final

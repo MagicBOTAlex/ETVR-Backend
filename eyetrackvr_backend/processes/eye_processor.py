@@ -7,6 +7,7 @@ from copy import deepcopy
 import numpy as np
 import queue
 import cv2
+from playsound import playsound
 
 
 class EyeProcessor(WorkerProcess):
@@ -26,9 +27,39 @@ class EyeProcessor(WorkerProcess):
         self.algorithms: list[BaseAlgorithm] = []
         self.config: AlgorithmConfig = tracker_config.algorithm
         self.tracker_position = tracker_config.tracker_position
+        self.tracker_config: TrackerConfig = tracker_config
+        self.isCalibrating = False
+        self.dataPoints: list[EyeData] = []
+        self.targetNumDataPoints = 1000
 
     def startup(self) -> None:
         self.setup_algorithms()
+
+    # Checks the config for a calibration signal
+    def calibrationWatcher(self): # Passing self in every function. okay
+        self.logger.error(f"Starting calibration")
+        if self.tracker_config.calibrationData.min_x < -10:
+            self.tracker_config.calibrationData.min_x = 0
+            self.isCalibrating = True # Fucking everything in Python is lower case. Just not True for some reason
+            self.dataPoints.clear(); # Optional semi-colon
+            self.targetNumDataPoints = 500
+
+    def calculateCalibration(self):
+        x_arr = np.array([data.x for data in self.dataPoints], dtype=np.float32)
+        y_arr = np.array([data.y for data in self.dataPoints], dtype=np.float32)
+        blink_arr = np.array([data.blink for data in self.dataPoints], dtype=np.float32)
+        self.tracker_config.calibrationData.max_x = np.percentile(x_arr, 90)
+        self.tracker_config.calibrationData.min_x = np.percentile(x_arr, 10)
+        self.tracker_config.calibrationData.max_y = np.percentile(y_arr, 90)
+        self.tracker_config.calibrationData.min_y = np.percentile(y_arr, 10)
+        self.tracker_config.calibrationData.max_blink = np.percentile(blink_arr, 70)
+        self.tracker_config.calibrationData.min_blink = np.percentile(blink_arr, 30)
+        self.isCalibrating = False;
+        for i in range(10):
+            self.logger.error(f"Calibrated!!!")
+
+    def map_value(self, x, in_min, in_max, out_min, out_max):
+        return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 
     def run(self) -> None:
         try:
@@ -41,7 +72,7 @@ class EyeProcessor(WorkerProcess):
             return
 
         frames = []
-        result = EyeData(0, 0, 0, self.tracker_position)
+        result = None # Assume no frames 
         # TODO: add support for running one algorithm for blink detection and another for gaze tracking
         for algorithm in self.algorithms:
             result, frame = algorithm.run(deepcopy(current_frame), self.tracker_position)
@@ -50,6 +81,31 @@ class EyeProcessor(WorkerProcess):
                 self.logger.debug(f"Algorithm {algorithm.get_name()} failed to find a result")
                 continue
             break
+
+        if result is None:
+            return;
+
+
+
+
+
+        if self.isCalibrating and len(self.dataPoints) < self.targetNumDataPoints:
+            self.dataPoints.append(result)
+            self.logger.debug(len(self.dataPoints))
+        elif self.isCalibrating and len(self.dataPoints) > self.targetNumDataPoints:
+            self.calculateCalibration();
+        elif not self.isCalibrating and len(self.dataPoints) > 0: 
+            # apply calibration
+            result.x = self.map_value(result.x, 0, 1, self.tracker_config.calibrationData.min_x, self.tracker_config.calibrationData.max_x)
+            result.y = self.map_value(result.y, 0, 1, self.tracker_config.calibrationData.min_y, self.tracker_config.calibrationData.max_y)
+            result.blink = self.map_value(result.blink, 0, 1, self.tracker_config.calibrationData.min_blink, self.tracker_config.calibrationData.max_blink)
+
+
+
+
+
+
+
 
         try:
             # This is kinda bad, i would like to use a bitwise or but ahsf modifies the frame dimensions
@@ -74,6 +130,8 @@ class EyeProcessor(WorkerProcess):
     def on_tracker_config_update(self, tracker_config: TrackerConfig) -> None:
         self.config = tracker_config.algorithm
         self.tracker_position = tracker_config.tracker_position
+        self.tracker_config = tracker_config
+        self.calibrationWatcher();
         self.setup_algorithms()
 
     def setup_algorithms(self) -> None:

@@ -1,4 +1,5 @@
 # TODO: split this package into multiple files, its getting too big
+# Alex: Yeah, this is crazy. Idk, it works
 from __future__ import annotations
 import re
 import sys
@@ -156,6 +157,15 @@ class CameraConfig(BaseModel):
         else:
             raise ValueError("Invalid capture source, must be a valid IP address or COM port")
 
+# Alex: I hvae only used FastAPI once before. I hate python btw
+class CalibrationData(BaseModel):
+    # Meh, just gonna use some floats
+    max_x: float = 1.0
+    min_x: float = 0.0
+    max_y: float = 1.0
+    min_y: float = 0.0
+    max_blink: float = 1.0
+    min_blink: float = 0.0
 
 class TrackerConfig(BaseModel):
     enabled: bool = False
@@ -164,6 +174,8 @@ class TrackerConfig(BaseModel):
     tracker_position: TrackerPosition = TrackerPosition.UNDEFINED
     algorithm: AlgorithmConfig = AlgorithmConfig()
     camera: CameraConfig = CameraConfig()
+    calibrationData: CalibrationData = CalibrationData() # Ugh, python notation
+
 
     @field_validator("uuid")
     def uuid_validator(cls, value: str) -> str:
